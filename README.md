@@ -13,7 +13,8 @@ wireless dongle over HID, so it works even though the dongle's audio devices sta
   communications output and microphone for "headset ON" and "headset OFF", then Save.
   The status check interval is configurable there too (default 1500 ms, minimum 500 ms); a switch
   happens after two identical readings, so it takes roughly 1–2 intervals.
-- Tray icon: orange headset = headset on, grey speaker = headset off. Double-click it to open
+- Tray icon: orange headset = headset on, with a vertical battery bar on the right (green above 50%,
+  yellow above 20%, red below); grey speaker = headset off. Double-click it to open
   settings; right-click for manual switching, auto-switch on/off, "Start with Windows" and the log folder.
 - Settings and log: `%AppData%\ArctSwitch\`.
 

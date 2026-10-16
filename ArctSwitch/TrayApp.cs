@@ -9,8 +9,11 @@ sealed class TrayApp : ApplicationContext
     readonly HeadsetMonitor _monitor = new();
     readonly NotifyIcon _tray;
     readonly Control _ui = new();
-    readonly Icon _iconOn = MakeHeadsetIcon(Color.FromArgb(255, 82, 0));
+    static readonly Color OnColor = Color.FromArgb(255, 82, 0);
+    readonly Icon _iconOn = MakeHeadsetIcon(OnColor);
     readonly Icon _iconOff = MakeSpeakerIcon(Color.FromArgb(140, 140, 140));
+    Icon? _batteryIcon;      // headset + battery bar, redrawn only when the level changes
+    int? _batteryIconLevel;
     readonly ToolStripMenuItem _statusItem = new() { Enabled = false };
     readonly ToolStripMenuItem _autoItem = new("Switch automatically") { CheckOnClick = true };
     readonly ToolStripMenuItem _startupItem = new("Start with Windows") { CheckOnClick = true };
@@ -110,7 +113,26 @@ sealed class TrayApp : ApplicationContext
         _lastTooltip = text;
         _statusItem.Text = text;
         _tray.Text = "ArctSwitch – " + text;
-        _tray.Icon = _monitor.State == HeadsetState.On ? _iconOn : _iconOff;
+        UpdateIcon();
+    }
+
+    void UpdateIcon()
+    {
+        if (_monitor.State != HeadsetState.On) { _tray.Icon = _iconOff; return; }
+        if (_monitor.Battery is not int level) { _tray.Icon = _iconOn; return; }
+
+        if (_batteryIcon == null || _batteryIconLevel != level)
+        {
+            var previous = _batteryIcon;
+            _batteryIcon = MakeHeadsetBatteryIcon(OnColor, level);
+            _batteryIconLevel = level;
+            _tray.Icon = _batteryIcon;
+            previous?.Dispose(); // only after the tray has switched to the new icon
+        }
+        else
+        {
+            _tray.Icon = _batteryIcon;
+        }
     }
 
     void ShowSettings()
@@ -137,20 +159,46 @@ sealed class TrayApp : ApplicationContext
         _tray.Visible = false;
         _tray.Dispose();
         _settings?.Close();
+        _batteryIcon?.Dispose();
+        _iconOn.Dispose();
+        _iconOff.Dispose();
         Log.Write("ArctSwitch exited");
         base.ExitThreadCore();
     }
 
     // Icons are drawn in code so the app needs no embedded image resources.
 
-    static Icon MakeHeadsetIcon(Color color) => MakeIcon(g =>
+    static Icon MakeHeadsetIcon(Color color) => MakeIcon(g => DrawHeadset(g, color));
+
+    /// <summary>Headset shrunk to the left, with a vertical battery bar on the right that fills from the bottom.</summary>
+    static Icon MakeHeadsetBatteryIcon(Color color, int level) => MakeIcon(g =>
+    {
+        g.TranslateTransform(0, 3);
+        g.ScaleTransform(0.8f, 0.8f);
+        DrawHeadset(g, color);
+        g.ResetTransform();
+
+        const float x = 25.5f, top = 4f, width = 6f, height = 24f;
+        using var track = new SolidBrush(Color.FromArgb(110, 128, 128, 128));
+        g.FillRectangle(track, x, top, width, height);
+
+        level = Math.Clamp(level, 0, 100);
+        var fill = level > 50 ? Color.FromArgb(76, 175, 80)
+                 : level > 20 ? Color.FromArgb(255, 193, 7)
+                 : Color.FromArgb(229, 57, 53);
+        float filled = Math.Max(level > 0 ? 2f : 0f, height * level / 100f);
+        using var brush = new SolidBrush(fill);
+        g.FillRectangle(brush, x, top + height - filled, width, filled);
+    });
+
+    static void DrawHeadset(Graphics g, Color color)
     {
         using var pen = new Pen(color, 3.5f);
         g.DrawArc(pen, 5, 4, 22, 24, 180, 180);
         using var brush = new SolidBrush(color);
         g.FillRectangle(brush, 3, 15, 7, 13);
         g.FillRectangle(brush, 22, 15, 7, 13);
-    });
+    }
 
     static Icon MakeSpeakerIcon(Color color) => MakeIcon(g =>
     {
@@ -170,6 +218,20 @@ sealed class TrayApp : ApplicationContext
             g.SmoothingMode = SmoothingMode.AntiAlias;
             draw(g);
         }
-        return Icon.FromHandle(bmp.GetHicon());
+        // Icon.FromHandle does not take ownership of the HICON, so clone it into an Icon that does
+        // and free the original; disposing the returned Icon then releases everything.
+        IntPtr hicon = bmp.GetHicon();
+        try
+        {
+            using var borrowed = Icon.FromHandle(hicon);
+            return (Icon)borrowed.Clone();
+        }
+        finally
+        {
+            DestroyIcon(hicon);
+        }
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool DestroyIcon(IntPtr hIcon);
 }
