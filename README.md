@@ -27,6 +27,12 @@ wireless dongle over HID, so it works even though the dongle's audio devices sta
 
     dotnet publish ArctSwitch -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 
+## Releasing
+GitHub Actions builds every push to `main` (the exe is attached to the run as an artifact).
+To publish a release: **Actions → Release → Run workflow**, enter a version such as `1.0.0`.
+The workflow builds with that version, creates tag `v1.0.0` and a GitHub release with
+`ArctSwitch.exe` attached and auto-generated release notes.
+
 ## Credits
 The dongle's HID protocol was reverse-engineered by the community, notably
 [HeadsetControl](https://github.com/Sapd/HeadsetControl). This project is not affiliated with SteelSeries.
